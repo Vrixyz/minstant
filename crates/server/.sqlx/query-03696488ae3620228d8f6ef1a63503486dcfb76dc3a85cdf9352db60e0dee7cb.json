@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE champions\n        SET points = points + 1\n        WHERE id = $1\n        RETURNING points",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "points",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "03696488ae3620228d8f6ef1a63503486dcfb76dc3a85cdf9352db60e0dee7cb"
+}

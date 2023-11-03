@@ -9,5 +9,11 @@ serde = { version = "1.0.190", features = ["derive"] }
 shuttle-axum = "0.30.0"
 shuttle-runtime = "0.30.0"
 shuttle-shared-db = { version = "0.30.1", features = ["postgres"] }
-sqlx = { version = "0.7.2", features = ["macros"] }
+sqlx = { version = "0.7.2", features = [
+    "runtime-tokio-native-tls",
+    "macros",
+    "time",
+    "postgres",
+] }
 tokio = "1.28.2"
+time = "0.3.11"

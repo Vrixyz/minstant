@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE users\n        SET points = points + 1\n        WHERE id = $1\n        RETURNING points",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "points",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "a779a6c9dcdc80f5226d1862ff196670bf7f0381bc1060d7c7257266ca63737f"
+}

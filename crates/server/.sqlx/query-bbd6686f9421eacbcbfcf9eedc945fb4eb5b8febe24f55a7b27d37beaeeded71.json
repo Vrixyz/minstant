@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE users\n        SET points = points - 1\n        WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bbd6686f9421eacbcbfcf9eedc945fb4eb5b8febe24f55a7b27d37beaeeded71"
+}

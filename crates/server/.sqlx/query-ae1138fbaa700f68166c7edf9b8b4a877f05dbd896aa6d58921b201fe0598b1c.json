@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select can_get_points_time\n        from users\n        WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "can_get_points_time",
+        "type_info": "Timestamp"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ae1138fbaa700f68166c7edf9b8b4a877f05dbd896aa6d58921b201fe0598b1c"
+}
