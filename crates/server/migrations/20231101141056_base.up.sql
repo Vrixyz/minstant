@@ -26,6 +26,7 @@ create table if not exists users
     
     points int not null CHECK(points >= 0) DEFAULT 0,
     can_get_points_time timestamp not null DEFAULT NOW(),
+    pw_hash varchar(255) not null,
 
     team_id int references teams (id) on delete set null
 );
