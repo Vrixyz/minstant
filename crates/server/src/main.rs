@@ -1,19 +1,25 @@
-use std::fmt::Display;
+mod authentication;
 
+use std::{
+    fmt::Display,
+    sync::{Arc, Mutex},
+};
+
+use authentication::AuthState;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
+    middleware,
     response::IntoResponse,
     routing::{get, post},
-    Router,
+    Extension, Router,
 };
+use rand_chacha::ChaCha8Rng;
+use rand_core::{OsRng, RngCore, SeedableRng};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
-#[derive(Clone)]
-struct AppState {
-    pool: PgPool,
-}
+type Random = Arc<Mutex<ChaCha8Rng>>;
 
 #[shuttle_runtime::main]
 async fn axum(
@@ -24,83 +30,104 @@ async fn axum(
         .await
         .expect("Migrations failed :(");
 
-    let state = AppState { pool };
+    let random = ChaCha8Rng::seed_from_u64(OsRng.next_u64());
+    let middleware_database = pool.clone();
     let router = Router::new()
         .route("/points/collect", post(points_collect))
         .route("/points/assign/:id", post(points_assign))
-        .with_state(state);
+        .route("/users/signup", post(authentication::post_signup))
+        .route("/users/login", post(authentication::post_login))
+        .layer(middleware::from_fn(move |req, next| {
+            authentication::auth(req, next, middleware_database.clone())
+        }))
+        .layer(Extension(pool))
+        .layer(Extension(Arc::new(Mutex::new(random))));
 
     Ok(router.into())
 }
 
-async fn points_collect(State(state): State<AppState>) -> impl IntoResponse {
-    let user_id = 0;
-    let mut transaction = state
-        .pool
+async fn points_collect(
+    Extension(mut current_user): Extension<AuthState>,
+    Extension(database): Extension<PgPool>,
+) -> impl IntoResponse {
+    let Some(user) = current_user.get_user().await else {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "You must be logged in.".to_string(),
+        ));
+    };
+    let mut transaction = database
         .begin()
         .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+        .map_err(|e| (StatusCode::IM_A_TEAPOT, e.to_string()))?;
     let row = match sqlx::query!(
         r#"select can_get_points_time
         from users
         WHERE id = $1"#,
-        user_id
+        user.id
     )
     .fetch_one(&mut *transaction)
     .await
     {
         Ok(todo) => Ok(todo),
-        Err(e) => Err((StatusCode::BAD_REQUEST, e.to_string())),
+        Err(e) => Err((StatusCode::LOCKED, e.to_string())),
     }?;
+    dbg!(row);
     match sqlx::query!(
         "UPDATE users
         SET points = points + 1
-        WHERE id = $1",
-        user_id
+        WHERE id = $1
+        RETURNING points",
+        dbg!(user.id)
     )
     .fetch_one(&mut *transaction)
     .await
     {
         Ok(todo) => {}
-        Err(e) => return Err((StatusCode::BAD_REQUEST, e.to_string())),
+        Err(e) => return Err((StatusCode::EXPECTATION_FAILED, e.to_string())),
     };
+    // TODO: that's duplicated, we need to remove from pool.
     let row = match sqlx::query!(
         "UPDATE users
         SET points = points + 1
         WHERE id = $1
         RETURNING points",
-        user_id
+        user.id
     )
     .fetch_one(&mut *transaction)
     .await
     {
         Ok(row) => Ok(row),
-        Err(e) => return Err((StatusCode::BAD_REQUEST, e.to_string())),
+        Err(e) => return Err((StatusCode::ALREADY_REPORTED, e.to_string())),
     }?;
 
     transaction
         .commit()
         .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+        .map_err(|e| (StatusCode::VARIANT_ALSO_NEGOTIATES, e.to_string()))?;
     Ok((StatusCode::OK, axum::Json(row.points)))
 }
 
 async fn points_assign(
-    State(state): State<AppState>,
+    Extension(mut current_user): Extension<AuthState>,
+    Extension(database): Extension<PgPool>,
     Path(champion_id): Path<i32>,
 ) -> impl IntoResponse {
-    let mut transaction = state
-        .pool
+    let Some(user) = current_user.get_user().await else {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "You must be logged in.".to_string(),
+        ));
+    };
+    let mut transaction = database
         .begin()
         .await
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    // TODO: retrieve player_id from authdata.
-    let user_id = 0;
     match sqlx::query!(
         "UPDATE users
         SET points = points - 1
         WHERE id = $1",
-        user_id
+        user.id
     )
     .fetch_one(&mut *transaction)
     .await
