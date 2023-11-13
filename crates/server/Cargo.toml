@@ -24,3 +24,4 @@ http = "*"
 cookie = "0.17.0"
 rand_core = { version = "0.6", features = ["std"] }
 rand_chacha = "0.3.1"
+rand = "*"

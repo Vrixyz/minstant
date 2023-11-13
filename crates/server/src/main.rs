@@ -2,7 +2,9 @@ mod authentication;
 
 use std::{
     fmt::Display,
+    ops::Add,
     sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
 
 use authentication::AuthState;
@@ -14,10 +16,13 @@ use axum::{
     routing::{get, post},
     Extension, Router,
 };
+use rand::{thread_rng, Rng};
 use rand_chacha::ChaCha8Rng;
 use rand_core::{OsRng, RngCore, SeedableRng};
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
+use sqlx::{postgres::types::PgInterval, PgPool};
+use time::{OffsetDateTime, PrimitiveDateTime};
+use tokio::time::interval;
 
 type Random = Arc<Mutex<ChaCha8Rng>>;
 
@@ -42,12 +47,12 @@ async fn axum(
         }))
         .layer(Extension(pool))
         .layer(Extension(Arc::new(Mutex::new(random))));
-
     Ok(router.into())
 }
 
 async fn points_collect(
     Extension(mut current_user): Extension<AuthState>,
+    Extension(random): Extension<Random>,
     Extension(database): Extension<PgPool>,
 ) -> impl IntoResponse {
     let Some(user) = current_user.get_user().await else {
@@ -72,10 +77,67 @@ async fn points_collect(
         Ok(todo) => Ok(todo),
         Err(e) => Err((StatusCode::LOCKED, e.to_string())),
     }?;
-    dbg!(row);
+    dbg!(&row);
+    let now = OffsetDateTime::now_utc();
+    let now_pdt = PrimitiveDateTime::new(now.date(), now.time());
+    if now_pdt < row.can_get_points_time {
+        return Err((
+            StatusCode::FORBIDDEN,
+            format!("You're not ready to collect yet. next time is: {}", now),
+        ));
+    }
+    // TODO: that's duplicated, we need to remove from pool.
     match sqlx::query!(
+        "UPDATE points_pool
+        SET points = points - 1
+        WHERE open_at < $1
+        RETURNING points",
+        now_pdt
+    )
+    .fetch_one(&mut *transaction)
+    .await
+    {
+        Err(e) => {
+            return Err((
+                StatusCode::FORBIDDEN,
+                format!(
+                    "Probably no points left in pool, or pool not open. ; error: {}",
+                    e
+                ),
+            ))
+        }
+        Ok(row) => {
+            //let mut random = random.lock().unwrap();
+            let delay = 2;
+            // random.gen_range(2..=6);
+            match sqlx::query!(
+                "UPDATE points_pool
+                    SET points = 200,
+                    open_at = $1
+                    ",
+                now_pdt + std::time::Duration::from_secs(delay * 60 * 60)
+            )
+            .execute(&mut *transaction)
+            .await
+            {
+                Err(e) => {
+                    return Err((
+                        StatusCode::FORBIDDEN,
+                        format!(
+                            "Probably no points left in pool, or pool is not open. ; error: {}",
+                            e
+                        ),
+                    ))
+                }
+                Ok(row) => Ok(()),
+            }?;
+        }
+    };
+
+    let row = match sqlx::query!(
         "UPDATE users
-        SET points = points + 1
+        SET points = points + 1,
+            can_get_points_time = NOW() + CAST('12 seconds' AS INTERVAL)
         WHERE id = $1
         RETURNING points",
         dbg!(user.id)
@@ -83,28 +145,14 @@ async fn points_collect(
     .fetch_one(&mut *transaction)
     .await
     {
-        Ok(todo) => {}
-        Err(e) => return Err((StatusCode::EXPECTATION_FAILED, e.to_string())),
-    };
-    // TODO: that's duplicated, we need to remove from pool.
-    let row = match sqlx::query!(
-        "UPDATE users
-        SET points = points + 1
-        WHERE id = $1
-        RETURNING points",
-        user.id
-    )
-    .fetch_one(&mut *transaction)
-    .await
-    {
-        Ok(row) => Ok(row),
-        Err(e) => return Err((StatusCode::ALREADY_REPORTED, e.to_string())),
+        Ok(todo) => Ok(todo),
+        Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
     }?;
 
     transaction
         .commit()
         .await
-        .map_err(|e| (StatusCode::VARIANT_ALSO_NEGOTIATES, e.to_string()))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok((StatusCode::OK, axum::Json(row.points)))
 }
 
