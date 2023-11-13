@@ -9,7 +9,7 @@ create table if not exists champions
     id serial primary key,
     points int not null CHECK(points >= 0) DEFAULT 0,
     name varchar(32) not null UNIQUE,
-    team_id int references teams (id) on delete cascade
+    team_id int references teams (id) on delete cascade not null
 );
 
 create table if not exists points_pool
@@ -33,5 +33,5 @@ create table if not exists users
 
 CREATE TABLE IF NOT EXISTS sessions (
     session_token BYTEA PRIMARY KEY,
-    user_id integer REFERENCES users (id) ON DELETE CASCADE
+    user_id integer REFERENCES users (id) ON DELETE CASCADE not null
 );

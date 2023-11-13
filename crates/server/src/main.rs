@@ -39,6 +39,8 @@ async fn axum(
     let middleware_database = pool.clone();
     let router = Router::new()
         .route("/points/collect", post(points_collect))
+        .route("/champions", get(get_champions))
+        .route("/teams", get(get_teams))
         .route("/points/assign/:id", post(points_assign))
         .route("/users/signup", post(authentication::post_signup))
         .route("/users/login", post(authentication::post_login))
@@ -77,13 +79,15 @@ async fn points_collect(
         Ok(todo) => Ok(todo),
         Err(e) => Err((StatusCode::LOCKED, e.to_string())),
     }?;
-    dbg!(&row);
     let now = OffsetDateTime::now_utc();
     let now_pdt = PrimitiveDateTime::new(now.date(), now.time());
     if now_pdt < row.can_get_points_time {
         return Err((
             StatusCode::FORBIDDEN,
-            format!("You're not ready to collect yet. next time is: {}", now),
+            format!(
+                "You're not ready to collect yet. next time is: {}",
+                row.can_get_points_time
+            ),
         ));
     }
     // TODO: that's duplicated, we need to remove from pool.
@@ -107,30 +111,32 @@ async fn points_collect(
             ))
         }
         Ok(row) => {
-            //let mut random = random.lock().unwrap();
-            let delay = 2;
-            // random.gen_range(2..=6);
-            match sqlx::query!(
-                "UPDATE points_pool
+            if row.points <= 0 {
+                //let mut random = random.lock().unwrap();
+                let delay = 2;
+                // random.gen_range(2..=6);
+                match sqlx::query!(
+                    "UPDATE points_pool
                     SET points = 200,
                     open_at = $1
                     ",
-                now_pdt + std::time::Duration::from_secs(delay * 60 * 60)
-            )
-            .execute(&mut *transaction)
-            .await
-            {
-                Err(e) => {
-                    return Err((
-                        StatusCode::FORBIDDEN,
-                        format!(
-                            "Probably no points left in pool, or pool is not open. ; error: {}",
-                            e
-                        ),
-                    ))
-                }
-                Ok(row) => Ok(()),
-            }?;
+                    now_pdt + std::time::Duration::from_secs(delay * 60 * 60)
+                )
+                .execute(&mut *transaction)
+                .await
+                {
+                    Err(e) => {
+                        return Err((
+                            StatusCode::FORBIDDEN,
+                            format!(
+                                "Probably no points left in pool, or pool is not open. ; error: {}",
+                                e
+                            ),
+                        ))
+                    }
+                    Ok(row) => Ok(()),
+                }?;
+            }
         }
     };
 
@@ -201,4 +207,34 @@ async fn points_assign(
         .await
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     Ok((StatusCode::OK, axum::Json(row.points)))
+}
+
+#[derive(Serialize)]
+struct Champion {
+    id: i64,
+    team_id: i64,
+    name: String,
+}
+async fn get_champions(Extension(database): Extension<PgPool>) -> impl IntoResponse {
+    match sqlx::query_as!(Champion, "SELECT id, team_id, name from champions")
+        .fetch_all(&database)
+        .await
+    {
+        Ok(rows) => Ok((StatusCode::OK, axum::Json(rows))),
+        Err(e) => Err((StatusCode::BAD_REQUEST, e.to_string())),
+    }
+}
+#[derive(Serialize)]
+struct Team {
+    id: i64,
+    name: String,
+}
+async fn get_teams(Extension(database): Extension<PgPool>) -> impl IntoResponse {
+    match sqlx::query_as!(Team, "SELECT id, name from teams")
+        .fetch_all(&database)
+        .await
+    {
+        Ok(rows) => Ok((StatusCode::OK, axum::Json(rows))),
+        Err(e) => Err((StatusCode::BAD_REQUEST, e.to_string())),
+    }
 }
