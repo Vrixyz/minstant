@@ -6,6 +6,7 @@ use bevy::{
     prelude::*,
     utils::{HashMap, Instant},
 };
+use bevy_flycam::prelude::*;
 use bevy_mod_picking::prelude::*;
 use std::f32::consts::PI;
 use std::time::Duration;
@@ -15,7 +16,17 @@ fn main() {
         .add_plugins((
             DefaultPlugins.set(low_latency_window_plugin()),
             DefaultPickingPlugins.build(), //.disable::<DebugPickingPlugin>(),
+            NoCameraPlayerPlugin,
         ))
+        .insert_resource(MovementSettings {
+            sensitivity: 0.0001, // default: 0.00012
+            speed: 5.0,          // default: 12.0
+        })
+        .insert_resource(KeyBindings {
+            move_ascend: KeyCode::E,
+            move_descend: KeyCode::Q,
+            ..Default::default()
+        })
         .insert_resource(AmbientLight {
             color: Color::WHITE,
             brightness: 1.0,
@@ -42,10 +53,14 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>, mut meshes: Res
     commands.insert_resource(Animations(vec![asset_server.load("mouse.glb#Animation0")]));
 
     // Camera
-    commands.spawn(Camera3dBundle {
-        transform: Transform::from_xyz(0.0, 1.0, 4.0).looking_at(Vec3::new(0.0, 0.2, 0.0), Vec3::Y),
-        ..default()
-    });
+    commands.spawn((
+        Camera3dBundle {
+            transform: Transform::from_xyz(0.0, 1.0, 4.0)
+                .looking_at(Vec3::new(0.0, 0.2, 0.0), Vec3::Y),
+            ..default()
+        },
+        FlyCam,
+    ));
 
     // Light
     commands.spawn(DirectionalLightBundle {
@@ -81,6 +96,59 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>, mut meshes: Res
         &mut meshes,
         Transform::from_translation(Vec3::new(0.5f32, 0f32, 0f32)),
     );
+
+    let models = vec![
+        (
+            "kenney/burger.glb#Scene0",
+            0.5f32,
+            Vec3::new(1f32, 0f32, 1f32),
+        ),
+        (
+            "kenney/race.glb#Scene0",
+            1.5f32,
+            Vec3::new(3f32, 0f32, 2f32),
+        ),
+        (
+            "kenney/firetruck.glb#Scene0",
+            2f32,
+            Vec3::new(6f32, 0f32, 3f32),
+        ),
+        (
+            "kenney/tree_plateau_fall.glb#Scene0",
+            6f32,
+            Vec3::new(11f32, 0f32, 5f32),
+        ),
+        (
+            "kenney/tree_pineTallC_detailed.glb#Scene0",
+            8f32,
+            Vec3::new(15f32, 0f32, 7f32),
+        ),
+        (
+            "kay/building_A.gltf#Scene0",
+            10f32,
+            Vec3::new(28f32, 0f32, 12f32),
+        ),
+    ];
+    for (path, scale, position) in models {
+        let mesh = asset_server.load(path);
+        commands.spawn((SceneBundle {
+            transform: Transform::from_scale(Vec3::splat(scale)).with_translation(position),
+            scene: mesh.clone(),
+            ..default()
+        },));
+        commands.spawn((SceneBundle {
+            transform: Transform::from_scale(Vec3::splat(scale)).with_translation(
+                position
+                    * Vec3 {
+                        x: -1f32,
+                        y: 1f32,
+                        z: 1f32,
+                    },
+            ),
+            scene: mesh.clone(),
+            ..default()
+        },));
+    }
 }
 
 fn create_mouse(
@@ -139,7 +207,6 @@ fn make_pickable(
     meshes: Query<Entity, (With<Handle<Mesh>>, Without<Pickable>)>,
 ) {
     for entity in meshes.iter() {
-        dbg!("yo");
         commands
             .entity(entity)
             .insert((PickableBundle::default(), HIGHLIGHT_TINT.clone()));
@@ -176,8 +243,13 @@ fn keyboard_animation_control(
 }
 
 fn update_scale_with_points(mut to_scale: Query<(&mut Transform, &Points), Changed<Points>>) {
-    for (mut scale, points) in to_scale.iter_mut() {
-        scale.scale = Vec3::splat(1f32 + points.0 as f32 * 0.001);
+    for (mut t, points) in to_scale.iter_mut() {
+        const increments: f32 = 0.1f32;
+        const steps_divider: f32 = 10f32;
+        let current_step = (points.0 as f32 / steps_divider).floor();
+        t.scale = Vec3::splat(1f32 + current_step * increments);
+        let offset = current_step * increments * 0.4f32;
+        t.translation = Vec3::new(t.translation.x.signum() * (0.5f32 + offset), 0f32, -offset);
     }
 }
 
