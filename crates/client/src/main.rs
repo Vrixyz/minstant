@@ -1,4 +1,4 @@
-//! Plays animations from a skinned glTF.
+mod communication;
 
 use bevy::math::{vec3, vec4};
 use bevy::{
@@ -10,6 +10,7 @@ use bevy_flycam::prelude::*;
 use bevy_mod_picking::prelude::*;
 use std::f32::consts::PI;
 use std::time::Duration;
+use crate::communication::ComPlugin;
 
 fn main() {
     App::new()
@@ -17,6 +18,7 @@ fn main() {
             DefaultPlugins.set(low_latency_window_plugin()),
             DefaultPickingPlugins.build(), //.disable::<DebugPickingPlugin>(),
             NoCameraPlayerPlugin,
+            ComPlugin
         ))
         .insert_resource(MovementSettings {
             sensitivity: 0.0001, // default: 0.00012

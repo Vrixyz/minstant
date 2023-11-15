@@ -6,6 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# game
 bevy = "0.12"
 bevy_mod_picking = "0.17"
 bevy_flycam = { git = "https://github.com/sburris0/bevy_flycam.git" }
+
+# Communication
+bevy_http_client = "*"
+serde_json = "1"
+serde = "1"
